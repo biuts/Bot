@@ -5,11 +5,12 @@ from aiogram.filters.callback_data import CallbackData
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from db import ChatSettings, Word
-from utils import fmt_minutes
+from utils import DURATIONS, fmt_minutes
 
 PUNISH_TITLES = {
     "warn": "⚠️ Предупреждение",
     "mute": "🔇 Мут",
+    "kick": "👢 Кик",
     "ban": "🚫 Бан",
     "escalation": "📈 Эскалация (1→⚠️, 2→🔇, 3→🚫)",
 }
@@ -88,6 +89,8 @@ def settings_menu(chat: ChatSettings) -> InlineKeyboardMarkup:
             _b(("✅ " if m == chat.mute_minutes else "") + fmt_minutes(m), "mute", cid, str(m))
             for m in MUTE_OPTIONS
         ],
+        [_v(f"⚠️ Варны: {chat.warn_limit} → {WARN_ACTIONS.get(chat.warn_action, chat.warn_action)}", "wset", cid)],
+        [_v("🔇 Другая длительность мута", "mdur", cid)],
         _back(cid),
     ]
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -96,3 +99,80 @@ def settings_menu(chat: ChatSettings) -> InlineKeyboardMarkup:
 def back_menu(chat_id: int) -> InlineKeyboardMarkup:
     """Только кнопка «Назад»."""
     return InlineKeyboardMarkup(inline_keyboard=[_back(chat_id)])
+
+
+# ------------------------------------------------------------------ v2
+class V2(CallbackData, prefix="v2"):
+    """Callback-данные дополнения v2 (префикс v2, не пересекаются с Menu)."""
+
+    act: str
+    chat_id: int = 0
+    uid: int = 0
+    arg: str = ""
+
+
+WARN_ACTIONS = {"mute": "🔇 Мут", "kick": "👢 Кик", "ban": "🚫 Бан"}
+WARN_LIMITS = (2, 3, 4, 5)
+
+
+def _v(text: str, act: str, chat_id: int, uid: int = 0, arg: str = "") -> InlineKeyboardButton:
+    return InlineKeyboardButton(text=text, callback_data=V2(act=act, chat_id=chat_id, uid=uid, arg=arg).pack())
+
+
+def duration_menu(
+    chat_id: int, act: str, uid: int = 0, *, current: int | None = None,
+    cancel: bool = False, back_action: str | None = None,
+) -> InlineKeyboardMarkup:
+    """Выбор длительности: 5м 15м 1ч 6ч 12ч 1д 3д 7д + навсегда."""
+    btns = [
+        _v(("✅ " if current == m else "") + fmt_minutes(m), act, chat_id, uid, str(m)) for m in DURATIONS
+    ]
+    rows = [btns[i : i + 3] for i in range(0, len(btns), 3)]
+    rows.append([_v(("✅ " if current == 0 else "") + "♾ Навсегда", act, chat_id, uid, "0")])
+    if cancel:
+        rows.append([_v("❌ Отмена", "gc", chat_id, uid)])
+    if back_action:
+        rows.append([_b("⬅️ Назад", back_action, chat_id)])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def reason_menu(chat_id: int, uid: int, minutes: int) -> InlineKeyboardMarkup:
+    """Шаг причины: пропустить или отменить."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [_v("Без причины", "gr", chat_id, uid, str(minutes))],
+            [_v("❌ Отмена", "gc", chat_id, uid)],
+        ]
+    )
+
+
+def warn_settings_menu(chat: ChatSettings) -> InlineKeyboardMarkup:
+    """Лимит варнов и действие после лимита."""
+    cid = chat.chat_id
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [_v(("✅ " if n == chat.warn_limit else "") + str(n), "wl", cid, 0, str(n)) for n in WARN_LIMITS],
+            [
+                _v(("✅ " if a == chat.warn_action else "") + t, "wa", cid, 0, a)
+                for a, t in WARN_ACTIONS.items()
+            ],
+            [_v("🔇 Длительность мута", "mdur", cid)],
+            [_b("⬅️ Назад", "settings", cid)],
+        ]
+    )
+
+
+def back_to(chat_id: int, action: str) -> InlineKeyboardMarkup:
+    """Кнопка «Назад» на указанный экран меню."""
+    return InlineKeyboardMarkup(inline_keyboard=[[_b("⬅️ Назад", action, chat_id)]])
+
+
+def stats_menu(chat_id: int) -> InlineKeyboardMarkup:
+    """Статистика + списки v2."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [_v("🔇 Активные муты", "ml", chat_id)],
+            [_v("📜 История по ID", "hist", chat_id)],
+            _back(chat_id),
+        ]
+    )

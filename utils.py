@@ -31,8 +31,18 @@ async def is_chat_admin(
     return result
 
 
+DURATIONS = (5, 15, 60, 360, 720, 1440, 4320, 10080)  # минуты для кнопок мута
+
+
+def fmt_for(minutes: int) -> str:
+    """«на 1 ч.» или «навсегда»."""
+    return "навсегда" if minutes <= 0 else f"на {fmt_minutes(minutes)}"
+
+
 def fmt_minutes(minutes: int) -> str:
-    """Человекочитаемая длительность."""
+    """Человекочитаемая длительность (0 = навсегда)."""
+    if minutes <= 0:
+        return "навсегда"
     if minutes % 1440 == 0:
         return f"{minutes // 1440} дн."
     if minutes % 60 == 0:
